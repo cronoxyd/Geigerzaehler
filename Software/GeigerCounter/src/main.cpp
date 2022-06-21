@@ -144,6 +144,11 @@ void loop()
         Serial.print("n:   ");
         Serial.println(impulseCountTotal);
 
+        lcd.setCursor(0, 0);
+        lcd.print((char)0b11110110); // Σ
+        lcd.print("n:   ");
+        lcd.print(impulseCountTotal);
+
         Serial.print("f:    ");
         Serial.println(cpm);
         lcd.setCursor(0, 1);
