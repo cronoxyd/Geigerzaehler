@@ -9,22 +9,21 @@
 #include <ESP_Mail_Client.h>
 #include "Arduino.h"
 #include "config.h"
+#include "custom_characters.h"
 
 WiFiServer server(80);
-LiquidCrystal_I2C lcd(0x20, 20, 4); // Address, Characters per line, Line count
+LiquidCrystal_I2C lcd(0x20, DISP_COLUMNS, DISP_ROWS); // Address, Characters per line, Line count
 SMTPSession smtp;
+
+char lcdBuffer[DISP_ROWS][DISP_COLUMNS];
 
 bool notsend = true;
 int mailcount = 0;
 
 unsigned long impulseCountTotal = 0;
 unsigned long impulseCountInterval = 0;
-double cpm;
 unsigned long impulseonline;
 unsigned long cpmonline;
-unsigned int mult; // CPM = (counts in a given interval) * multiplier
-double radiationDoseMax = 0;
-bool initialized = false;
 
 String newHostname = "GeigerCounter";
 
@@ -33,20 +32,18 @@ ICACHE_RAM_ATTR void tube_impulse()
 { // ICACHE_RAM_ATRR schreibt Routine ins RAM
     impulseCountInterval++;
     impulseCountTotal++;
-
-    if (initialized)
-    {
-        Serial.print("+");
-
-        lcd.setCursor(0, 0);
-        lcd.print((char)0b11110110); // Σ
-        lcd.print("n:   ");
-        lcd.print(impulseCountTotal);
-    }
 }
 
 void setup()
 {
+    for (int y = 0; y < DISP_ROWS; y++)
+    {
+        for (int x = 0; x < DISP_COLUMNS; x++)
+        {
+            lcdBuffer[y][x] = 0x20;
+        }
+    }
+
     Serial.begin(115200);
     if (!ssid.isEmpty())
     {
@@ -56,8 +53,8 @@ void setup()
     delay(1000);
     lcd.init();
     lcd.backlight();
-    lcd.setCursor(0, 0);
-    lcd.print("Make: Geiger counter");
+    lcd.createChar(0, alarmBell);
+
     Serial.println("=========================================");
     Serial.println("Make: Geiger counter");
     Serial.println("=========================================");
@@ -86,15 +83,6 @@ void setup()
         server.begin();
     }
 
-    lcd.init();
-    lcd.setCursor(0, 0);
-    lcd.print("Make: Geiger counter");
-    // lcd.backlight();
-    impulseCountInterval = 0;
-    cpm = 0;
-    mult = 60000 / MEASUREMENT_INTERVAL_MS;
-    pinMode(COUNTER_PIN, INPUT);
-
     if (!ssid.isEmpty())
     {
         Serial.print("IP address: ");
@@ -104,96 +92,71 @@ void setup()
         lcd.setCursor(0, 2);
         lcd.print(WiFi.localIP());
     }
+
     Serial.print("Please wait ");
     Serial.print(MEASUREMENT_INTERVAL_MS / 1000);
     Serial.println(" sec until first measurement");
     Serial.println();
 
+    pinMode(COUNTER_PIN, INPUT);
     attachInterrupt(digitalPinToInterrupt(COUNTER_PIN), tube_impulse, FALLING);
 }
 
 double getRadiationDose(int CPM)
 {
-    return cpm * TUBE_COEFFICIENT;
+    return CPM * TUBE_COEFFICIENT;
+}
+
+/*
+ * Fills the line of the LCD with spaces.
+ * @param writtenLength The value returned by sprintf().
+ */
+void padLCDLine(char *line, int writtenLength)
+{
+    for (int x = writtenLength - 1; x < DISP_COLUMNS; x++)
+        line[x] = 0x20;
 }
 
 void loop()
 {
     static unsigned long measureStart;
     unsigned long now = millis();
-    double radiationDose = 0; // µSv
+    static unsigned int cpm;
+    static double radiationDose = 0; // µSv
+    static double radiationDoseMax = 0;
+    bool hasAlarm = cpm > ALARM_THRESHOLD;
 
-    // Immer wenn MESSZEITvergangen ist, Werte ausgeben
     if (now - measureStart > MEASUREMENT_INTERVAL_MS)
     {
-        initialized = true;
         measureStart = now;
-        if (impulseCountInterval)
+
+        cpm = impulseCountInterval * CPM_COEFFICIENT;
+        radiationDose = getRadiationDose(cpm);
+        radiationDoseMax = max(radiationDose, radiationDoseMax);
+        impulseonline = impulseCountInterval;
+        cpmonline = cpm;
+
+        impulseCountInterval = 0;
+    }
+
+    padLCDLine(lcdBuffer[0], sprintf(lcdBuffer[0], "%cn:   %lu ", 0b11110110, impulseCountTotal));
+    if (hasAlarm)
+    {
+        lcdBuffer[0][19] = 0;
+    }
+
+    padLCDLine(lcdBuffer[1], sprintf(lcdBuffer[1], "f:    %u min%c ", cpm, 0b11101001));
+    padLCDLine(lcdBuffer[2], sprintf(lcdBuffer[2], "H:    %.4f %cSv/h ", radiationDose, 0b11100100));
+    padLCDLine(lcdBuffer[3], sprintf(lcdBuffer[3], "Hmax: %.4f %cSv/h ", radiationDoseMax, 0b11100100));
+
+    for (int y = 0; y < DISP_ROWS; y++)
+    {
+        lcd.setCursor(0, y);
+        for (int x = 0; x < DISP_COLUMNS; x++)
         {
-            cpm = impulseCountInterval * mult;
-            radiationDose = getRadiationDose(cpm);
-            radiationDoseMax = max(radiationDose, radiationDoseMax);
-            impulseonline = impulseCountInterval;
-            cpmonline = cpm;
+            lcd.write(lcdBuffer[y][x]);
         }
-
-        lcd.init();
-
-        Serial.println("");
-        Serial.print((char)0b11110110); // Σ
-        Serial.print("n:   ");
-        Serial.println(impulseCountTotal);
-
-        lcd.setCursor(0, 0);
-        lcd.print((char)0b11110110); // Σ
-        lcd.print("n:   ");
-        lcd.print(impulseCountTotal);
-
-        Serial.print("f:    ");
-        Serial.println(cpm);
-        lcd.setCursor(0, 1);
-        lcd.print("f:    ");
-        lcd.print(cpm);
-        lcd.print(" min");
-        lcd.print((char)0b11101001); // ⁻¹
-
-        Serial.print("H:    ");
-        Serial.print(radiationDose, 4); // mit 4 Nachkommastellen
-        Serial.println(" µSv/h");
-        lcd.setCursor(0, 2);
-        lcd.print("H:    ");
-        lcd.print(radiationDose, 4);
-        lcd.print((char)0b00100000); // SPACE
-        lcd.print((char)0b11100100); // µ
-        lcd.print("Sv/h");
-
-        Serial.print("Hmax: ");
-        Serial.print(radiationDoseMax, 4); // mit 4 Nachkommastellen
-        Serial.println("µSv/h");
-        lcd.setCursor(0, 3);
-        lcd.print("Hmax: ");
-        lcd.print(radiationDoseMax, 4);
-        lcd.print((char)0b00100000); // SPACE
-        lcd.print((char)0b11100100); // µ
-        lcd.print("Sv/h");
-
-        if (cpm > ALARM_THRESHOLD)
-        {
-            Serial.println("Alarm: Threshold exceeded");
-            lcd.init();
-            lcd.setCursor(0, 0);
-            lcd.print("Make: Geigerzaehler");
-            lcd.setCursor(0, 1);
-            lcd.print("Impulse: ");
-            lcd.print(impulseCountInterval);
-            lcd.setCursor(0, 2);
-            lcd.print("   CPM: ");
-            lcd.print(cpm);
-            lcd.setCursor(0, 3);
-            lcd.println("      Alarm!      ");
-        }
-        Serial.println("");
-        impulseCountInterval = 0, cpm = 0;
+        // Serial.println(lcdBuffer[y]); // TODO: delay this
     }
 
     if (ssid.isEmpty())
@@ -207,7 +170,7 @@ void loop()
     client.print(impulseonline);
     client.print("<br></td></tr>");
     client.print("<tr><td><b>Impulse/min:</b> </td><td>");
-    client.print(impulseonline * mult);
+    client.print(impulseonline * CPM_COEFFICIENT);
     client.print("<br></td></tr>");
     client.print("<tr><td><b>uSv/h:</b> </td><td>");
     client.print(radiationDose);
