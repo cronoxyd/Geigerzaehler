@@ -17,8 +17,8 @@
 #define RECIPIENT_MAIL_ADDRESS "EMPFÄNGERADRESSE"
 
 // WiFi settings
-const String ssid = "";
-const String password = "";
+#define WIFI_AP_SSID "Geiger counter"
+#define WIFI_AP_PSK NULL
 
 // Display configuration
 #define DISP_COLUMNS 20

@@ -12,4 +12,15 @@ unsigned char alarmBell[] = {
     0x00
 };
 
+unsigned char radioWaves[] = {
+  0x00,
+  0x00,
+  0x07,
+  0x08,
+  0x13,
+  0x14,
+  0x15,
+  0x00
+};
+
 #endif /* CUSTOM_CHARACTERS_H */

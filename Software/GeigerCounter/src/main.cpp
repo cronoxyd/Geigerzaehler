@@ -5,25 +5,34 @@
  *************************************************************************/
 #include <LiquidCrystal_I2C.h>
 #include <ESP8266WiFi.h>
-//#include <PubSubClient.h>
+#include <ESPAsyncTCP.h>
+#include <ESPAsyncWebServer.h>
 #include <ESP_Mail_Client.h>
+#include <DNSServer.h>
+#include <dhcpserver.h>
 #include "Arduino.h"
 #include "config.h"
 #include "custom_characters.h"
+#include "index_html.h"
+#include "main_css.h"
+#include "main_js.h"
+#include "api_html.h"
+#include "CaptiveRequestHandler.hpp"
 
-WiFiServer server(80);
 LiquidCrystal_I2C lcd(0x20, DISP_COLUMNS, DISP_ROWS); // Address, Characters per line, Line count
 SMTPSession smtp;
+AsyncWebServer server(80);
+DNSServer dnsServer;
 
 char lcdBuffer[DISP_ROWS][DISP_COLUMNS];
 
-bool notsend = true;
-int mailcount = 0;
+static unsigned long impulseCountTotal = 0;
+static unsigned long impulseCountInterval = 0;
 
-unsigned long impulseCountTotal = 0;
-unsigned long impulseCountInterval = 0;
-unsigned long impulseonline;
-unsigned long cpmonline;
+static unsigned int cpm;
+static unsigned int cpmMax;
+static double radiationDose = 0;    // µSv
+static double radiationDoseMax = 0; // µSv
 
 String newHostname = "GeigerCounter";
 
@@ -44,59 +53,79 @@ void setup()
         }
     }
 
-    Serial.begin(115200);
-    if (!ssid.isEmpty())
-    {
-        WiFi.mode(WIFI_STA);
-        WiFi.hostname(newHostname.c_str());
-    }
-    delay(1000);
     lcd.init();
     lcd.backlight();
     lcd.createChar(0, alarmBell);
+    lcd.createChar(1, radioWaves);
+    lcd.clear();
+    lcd.print("Starting...");
 
-    Serial.println("=========================================");
-    Serial.println("Make: Geiger counter");
-    Serial.println("=========================================");
-    Serial.println();
+    Serial.begin(115200);
 
-    if (!ssid.isEmpty())
-    {
-        Serial.print("Connecting to ");
-        Serial.println(ssid);
-        lcd.setCursor(0, 1);
-        lcd.print("connecting to ");
-        lcd.setCursor(0, 2);
+    DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
 
-        lcd.print(ssid);
+    WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PSK);
+    delay(100);
+    IPAddress IP = WiFi.softAPIP();
+    // IPAddress subnet;
+    // subnet.fromString("0.0.0.0");
+    // WiFi.softAPConfig(IP, IP, subnet);
+    dnsServer.start(53, "*", IP);
 
-        WiFi.begin(ssid, password);
-        while (WiFi.status() != WL_CONNECTED)
-        {
-            delay(50);
-            Serial.print(".");
-        }
-        Serial.println("");
-        Serial.println("connected");
-        lcd.setCursor(0, 3);
-        lcd.print("connected");
-        server.begin();
-    }
+    server.onNotFound([IP](AsyncWebServerRequest *request)
+                      { request->redirect("http://" + IP.toString()); });
 
-    if (!ssid.isEmpty())
-    {
-        Serial.print("IP address: ");
-        Serial.println(WiFi.localIP());
-        lcd.setCursor(0, 1);
-        lcd.print("IP address:");
-        lcd.setCursor(0, 2);
-        lcd.print(WiFi.localIP());
-    }
+    server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
+              { request->send_P(200, "text/html", index_html); });
 
-    Serial.print("Please wait ");
-    Serial.print(MEASUREMENT_INTERVAL_MS / 1000);
-    Serial.println(" sec until first measurement");
-    Serial.println();
+    server.on("/css/main.css", HTTP_GET, [](AsyncWebServerRequest *request)
+              { request->send_P(200, "text/css", main_css); });
+
+    server.on("/js/main.js", HTTP_GET, [](AsyncWebServerRequest *request)
+              { request->send_P(200, "text/javascript", main_js); });
+
+    server.on("/api/totalcount", HTTP_GET, [](AsyncWebServerRequest *request)
+              { request->send_P(200, "text/plain", String(impulseCountTotal).c_str()); });
+
+    server.on("/api/totalcount", HTTP_DELETE, [](AsyncWebServerRequest *request)
+              { impulseCountTotal = 0;
+                request->send_P(200, "text/plain", ""); });
+
+    server.on("/api/frequency", HTTP_GET, [](AsyncWebServerRequest *request)
+              { request->send_P(200, "text/plain", String(cpm).c_str()); });
+
+    server.on("/api/frequency_max", HTTP_GET, [](AsyncWebServerRequest *request)
+              { request->send_P(200, "text/plain", String(cpmMax).c_str()); });
+
+    server.on("/api/dose", HTTP_GET, [](AsyncWebServerRequest *request)
+              { request->send_P(200, "text/plain", String(radiationDose).c_str()); });
+
+    server.on("/api/dose_max", HTTP_GET, [](AsyncWebServerRequest *request)
+              { request->send_P(200, "text/plain", String(radiationDoseMax).c_str()); });
+
+    server.on("/api/uptime", HTTP_GET, [](AsyncWebServerRequest *request)
+              { request->send_P(200, "text/plain", String(millis()).c_str()); });
+
+    server.on("/api", HTTP_GET, [](AsyncWebServerRequest *request)
+              { request->send_P(200, "text/html", api_html); });
+
+    server.addHandler(new CaptiveRequestHandler("http://" + IP.toString())).setFilter(ON_AP_FILTER);
+
+    server.begin();
+
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("SSID: ");
+    lcd.print(WIFI_AP_SSID);
+    // IPAddress subnet;
+    // subnet.fromString("255.255.255.0");
+    // WiFi.softAPConfig(IP, IP, subnet);
+
+    lcd.setCursor(0, 1);
+    lcd.print("IP: ");
+    lcd.print(IP);
+
+    delay(2500);
 
     pinMode(COUNTER_PIN, INPUT);
     attachInterrupt(digitalPinToInterrupt(COUNTER_PIN), tube_impulse, FALLING);
@@ -117,38 +146,8 @@ void padLCDLine(char *line, int writtenLength)
         line[x] = 0x20;
 }
 
-void loop()
+void updateLCD()
 {
-    static unsigned long measureStart;
-    unsigned long now = millis();
-    static unsigned int cpm;
-    static double radiationDose = 0; // µSv
-    static double radiationDoseMax = 0;
-    bool hasAlarm = cpm > ALARM_THRESHOLD;
-
-    if (now - measureStart > MEASUREMENT_INTERVAL_MS)
-    {
-        measureStart = now;
-
-        cpm = impulseCountInterval * CPM_COEFFICIENT;
-        radiationDose = getRadiationDose(cpm);
-        radiationDoseMax = max(radiationDose, radiationDoseMax);
-        impulseonline = impulseCountInterval;
-        cpmonline = cpm;
-
-        impulseCountInterval = 0;
-    }
-
-    padLCDLine(lcdBuffer[0], sprintf(lcdBuffer[0], "%cn:   %lu ", 0b11110110, impulseCountTotal));
-    if (hasAlarm)
-    {
-        lcdBuffer[0][19] = 0;
-    }
-
-    padLCDLine(lcdBuffer[1], sprintf(lcdBuffer[1], "f:    %u min%c ", cpm, 0b11101001));
-    padLCDLine(lcdBuffer[2], sprintf(lcdBuffer[2], "H:    %.4f %cSv/h ", radiationDose, 0b11100100));
-    padLCDLine(lcdBuffer[3], sprintf(lcdBuffer[3], "Hmax: %.4f %cSv/h ", radiationDoseMax, 0b11100100));
-
     for (int y = 0; y < DISP_ROWS; y++)
     {
         lcd.setCursor(0, y);
@@ -156,73 +155,46 @@ void loop()
         {
             lcd.write(lcdBuffer[y][x]);
         }
-        // Serial.println(lcdBuffer[y]); // TODO: delay this
+    }
+}
+
+void loop()
+{
+    static unsigned long measureStart;
+    unsigned long now = millis();
+    static unsigned long updateTimer;
+    bool hasAlarm = cpm > ALARM_THRESHOLD;
+
+    dnsServer.processNextRequest();
+
+    if (now - measureStart > MEASUREMENT_INTERVAL_MS)
+    {
+        measureStart = now;
+
+        cpm = impulseCountInterval * CPM_COEFFICIENT;
+        cpmMax = max(cpm, cpmMax);
+        radiationDose = getRadiationDose(cpm);
+        radiationDoseMax = max(radiationDose, radiationDoseMax);
+
+        impulseCountInterval = 0;
     }
 
-    if (ssid.isEmpty())
-        return;
-
-    WiFiClient client = server.available();
-    client.print("<head><title>Make:-Geigerz&auml;hler</title><meta http-equiv='refresh' content='5' /></head>");
-    client.print("<h1>Make:-Geigerz&auml;hler </h1><br>");
-    client.print("<table>");
-    client.print("<tr><td><b>Impulse:</b> </td><td>");
-    client.print(impulseonline);
-    client.print("<br></td></tr>");
-    client.print("<tr><td><b>Impulse/min:</b> </td><td>");
-    client.print(impulseonline * CPM_COEFFICIENT);
-    client.print("<br></td></tr>");
-    client.print("<tr><td><b>uSv/h:</b> </td><td>");
-    client.print(radiationDose);
-    client.print("<br></td></tr>");
-    client.print("<tr><td><b>Schwellwert:</b> </td><td>");
-    client.print(ALARM_THRESHOLD);
-    client.print("<br></td></tr>");
-    if (cpmonline > ALARM_THRESHOLD)
+    if (now - updateTimer > 100 || updateTimer == 0)
     {
-        client.print("<tr><td><b><big><big><big>ALARM!</big></big></big></b> </td><td>");
-        client.print("Schwellwert ueberschritten!");
-        client.print("<br></td></tr>");
-    }
-    client.print("</table>");
 
-    delay(100);
+        padLCDLine(lcdBuffer[0], sprintf(lcdBuffer[0], "%cn:   %lu ", 0b11110110, impulseCountTotal));
 
-    if (cpmonline > ALARM_THRESHOLD)
-    {
-        mailcount = mailcount - 1;
-        Serial.println(mailcount);
-        if (mailcount == 0)
-        {
-            notsend = true;
-        }
-        if (notsend == true)
-        {
-            notsend = false;
-            mailcount = 1200;
-            smtp.debug(1);
-            ESP_Mail_Session session;
-            session.server.host_name = SMTP_SERVER;
-            session.server.port = SMTP_PORT;
-            session.login.email = SENDER_MAIL_ADDRESS;
-            session.login.password = SENDER_PASSWORD;
-            session.login.user_domain = "";
-            SMTP_Message message;
-            message.sender.name = "Geigerzaehler";
-            message.sender.email = SENDER_MAIL_ADDRESS;
-            message.subject = "Strahlungsalarm";
-            message.addRecipient("Heinz", RECIPIENT_MAIL_ADDRESS);
-            // Send HTML message
-            String htmlMsg = "<div style=\"color:#FF0000;\"><h1>ALARM!</h1><p>Der Strahlungsgrenzwert wurde überschritten!</p></div>";
-            message.html.content = htmlMsg.c_str();
-            message.html.content = htmlMsg.c_str();
-            message.text.charSet = "us-ascii";
-            message.html.transfer_encoding = Content_Transfer_Encoding::enc_7bit;
-            if (!smtp.connect(&session))
-                return;
-            if (!MailClient.sendMail(&smtp, &message))
-                Serial.println("Error sending Email, " + smtp.errorReason());
-            Serial.println("Mail gesendet");
-        }
+        if (hasAlarm)
+            lcdBuffer[0][19] = 0;
+
+        if (WiFi.softAPgetStationNum())
+            lcdBuffer[0][18] = 1;
+
+        padLCDLine(lcdBuffer[1], sprintf(lcdBuffer[1], "f:    %u min%c ", cpm, 0b11101001));
+        padLCDLine(lcdBuffer[2], sprintf(lcdBuffer[2], "H:    %.4f %cSv/h ", radiationDose, 0b11100100));
+        padLCDLine(lcdBuffer[3], sprintf(lcdBuffer[3], "Hmax: %.4f %cSv/h ", radiationDoseMax, 0b11100100));
+
+        updateLCD();
+        updateTimer = now;
     }
 }
