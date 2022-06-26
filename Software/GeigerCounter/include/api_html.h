@@ -13,28 +13,64 @@ const char api_html[] PROGMEM = R"rawliteral(
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Geiger counter API</title>
     <link rel="stylesheet" type="text/css" href="css/main.css">
+    <link rel="stylesheet" type="text/css" href="css/swagger-ui.css">
+    <script type="text/javascript" src="js/swagger-ui-bundle.js"></script>
 </head>
 
-<body>
+<body class="d-flex justify-content-center">
     <main>
-        <h1>Geiger counter API</h1>
-        <h2>/api/totalcount</h2>
-        Returns the total count of the disintegrations measured.
-    
-        <h2>/api/frequency</h2>
-        Returns the count of disintegrations per minute.
-    
-        <h2>/api/frequency_max</h2>
-        Returns the maximum measured count of disintegrations per minute (non-persistent).
-    
-        <h2>/api/dose</h2>
-        Returns the radiation dose in µSv/h.
-    
-        <h2>/api/dose_max</h2>
-        Returns the maximum measured radiation dose in µSv/h (non-persistent).
-    
-        <h2>/api/uptime</h2>
-        Returns the uptime of the geiger counter in milliseconds.
+        <h1>Geiger counter API reference</h1>
+        <div class="api-reference">
+            <div class="api-item api-item-get">
+                <span class="api-method">GET</span>
+                <span class="api-description">
+                    <strong>/api/totalcount</strong>
+                    Returns the total count of disintegrations measured.
+                </span>
+            </div>
+            <div class="api-item api-item-get">
+                <span class="api-method">GET</span>
+                <span class="api-description">
+                    <strong>/api/frequency</strong>
+                    Returns the count of disintegrations per minute.
+                </span>
+            </div>
+            <div class="api-item api-item-get">
+                <span class="api-method">GET</span>
+                <span class="api-description">
+                    <strong>/api/frequency_max</strong>
+                    Returns the maximum count of disintegrations per minute.
+                </span>
+            </div>
+            <div class="api-item api-item-get">
+                <span class="api-method">GET</span>
+                <span class="api-description">
+                    <strong>/api/dose</strong>
+                    Returns the radiation dose in µSv/h.
+                </span>
+            </div>
+            <div class="api-item api-item-get">
+                <span class="api-method">GET</span>
+                <span class="api-description">
+                    <strong>/api/dose_max</strong>
+                    Returns the maximum measured radiation dose in µSv/h.
+                </span>
+            </div>
+            <div class="api-item api-item-get">
+                <span class="api-method">GET</span>
+                <span class="api-description">
+                    <strong>/api/uptime</strong>
+                    Returns the uptime of the geiger counter in milliseconds.
+                </span>
+            </div>
+            <div class="api-item api-item-post">
+                <span class="api-method">POST</span>
+                <span class="api-description">
+                    <strong>/api/reset_max</strong>
+                    Resets the maximum values to 0.
+                </span>
+            </div>
+        </div>
     </main>
 </body>
 

@@ -10,9 +10,14 @@
     <script type="text/javascript" src="js/main.js"></script>
 </head>
 
-<body class="d-flex justify-content-center align-items-center">
+<body class="d-flex">
     <main>
-        <h1>Geiger counter</h1>
+        <div class="d-flex">
+            <h1 class="flex-grow-1">Geiger counter</h1>
+            <span class="float-right" id="apiError">
+                <img src="media/image/wifi_off_black_24dp.svg" style="width: 2rem;"/>
+            </span>
+        </div>
         <table>
             <thead>
                 <tr>

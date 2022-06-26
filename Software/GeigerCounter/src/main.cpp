@@ -13,11 +13,8 @@
 #include "Arduino.h"
 #include "config.h"
 #include "custom_characters.h"
-#include "index_html.h"
-#include "main_css.h"
-#include "main_js.h"
-#include "api_html.h"
 #include "CaptiveRequestHandler.hpp"
+#include "staticcontent.h"
 
 LiquidCrystal_I2C lcd(0x20, DISP_COLUMNS, DISP_ROWS); // Address, Characters per line, Line count
 SMTPSession smtp;
@@ -34,6 +31,7 @@ static unsigned int cpmMax;
 static double radiationDose = 0;    // µSv
 static double radiationDoseMax = 0; // µSv
 
+IPAddress laddr;
 String newHostname = "GeigerCounter";
 
 // Interrupt-Routine wenn Impuls eintrifft
@@ -41,6 +39,14 @@ ICACHE_RAM_ATTR void tube_impulse()
 { // ICACHE_RAM_ATRR schreibt Routine ins RAM
     impulseCountInterval++;
     impulseCountTotal++;
+}
+
+String templateProcessor(const String &var)
+{
+    if (var == "laddr")
+        return laddr.toString();
+
+    return "";
 }
 
 void setup()
@@ -66,29 +72,37 @@ void setup()
 
     WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PSK);
     delay(100);
-    IPAddress IP = WiFi.softAPIP();
+    laddr = WiFi.softAPIP();
     // IPAddress subnet;
     // subnet.fromString("0.0.0.0");
-    // WiFi.softAPConfig(IP, IP, subnet);
-    dnsServer.start(53, "*", IP);
+    // WiFi.softAPConfig(laddr, laddr, subnet);
+    dnsServer.start(53, "*", laddr);
 
-    server.onNotFound([IP](AsyncWebServerRequest *request)
-                      { request->redirect("http://" + IP.toString()); });
+    server.onNotFound([](AsyncWebServerRequest *request)
+                      { request->redirect("http://" + laddr.toString()); });
 
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
               { request->send_P(200, "text/html", index_html); });
 
+    server.on("/api/v3/openapi.json", HTTP_GET, [](AsyncWebServerRequest *request)
+              { request->send_P(200, "text/css", openapi_json); });
+
     server.on("/css/main.css", HTTP_GET, [](AsyncWebServerRequest *request)
               { request->send_P(200, "text/css", main_css); });
 
+    server.on("/media/image/wifi_off_black_24dp.svg", HTTP_GET, [](AsyncWebServerRequest *request)
+              { request->send_P(200, "image/svg+xml", wifi_off_black_24dp_svg); });
+
     server.on("/js/main.js", HTTP_GET, [](AsyncWebServerRequest *request)
-              { request->send_P(200, "text/javascript", main_js); });
+              { request->send_P(200, "text/javascript", main_js, templateProcessor); });
 
     server.on("/api/totalcount", HTTP_GET, [](AsyncWebServerRequest *request)
               { request->send_P(200, "text/plain", String(impulseCountTotal).c_str()); });
 
-    server.on("/api/totalcount", HTTP_DELETE, [](AsyncWebServerRequest *request)
+    server.on("/api/reset_max", HTTP_POST, [](AsyncWebServerRequest *request)
               { impulseCountTotal = 0;
+                radiationDoseMax = radiationDose;
+                cpmMax = cpm;
                 request->send_P(200, "text/plain", ""); });
 
     server.on("/api/frequency", HTTP_GET, [](AsyncWebServerRequest *request)
@@ -98,10 +112,10 @@ void setup()
               { request->send_P(200, "text/plain", String(cpmMax).c_str()); });
 
     server.on("/api/dose", HTTP_GET, [](AsyncWebServerRequest *request)
-              { request->send_P(200, "text/plain", String(radiationDose).c_str()); });
+              { request->send_P(200, "text/plain", String(radiationDose, 4).c_str()); });
 
     server.on("/api/dose_max", HTTP_GET, [](AsyncWebServerRequest *request)
-              { request->send_P(200, "text/plain", String(radiationDoseMax).c_str()); });
+              { request->send_P(200, "text/plain", String(radiationDoseMax, 4).c_str()); });
 
     server.on("/api/uptime", HTTP_GET, [](AsyncWebServerRequest *request)
               { request->send_P(200, "text/plain", String(millis()).c_str()); });
@@ -109,7 +123,7 @@ void setup()
     server.on("/api", HTTP_GET, [](AsyncWebServerRequest *request)
               { request->send_P(200, "text/html", api_html); });
 
-    server.addHandler(new CaptiveRequestHandler("http://" + IP.toString())).setFilter(ON_AP_FILTER);
+    server.addHandler(new CaptiveRequestHandler("http://" + laddr.toString())).setFilter(ON_AP_FILTER);
 
     server.begin();
 
@@ -119,11 +133,11 @@ void setup()
     lcd.print(WIFI_AP_SSID);
     // IPAddress subnet;
     // subnet.fromString("255.255.255.0");
-    // WiFi.softAPConfig(IP, IP, subnet);
+    // WiFi.softAPConfig(laddr, laddr, subnet);
 
     lcd.setCursor(0, 1);
     lcd.print("IP: ");
-    lcd.print(IP);
+    lcd.print(laddr);
 
     delay(2500);
 

@@ -16,9 +16,14 @@ const char index_html[] PROGMEM = R"rawliteral(
     <script type="text/javascript" src="js/main.js"></script>
 </head>
 
-<body>
+<body class="d-flex">
     <main>
-        <h1>Geiger counter</h1>
+        <div class="d-flex">
+            <h1 class="flex-grow-1">Geiger counter</h1>
+            <span class="float-right" id="apiError">
+                <img src="media/image/wifi_off_black_24dp.svg" style="width: 2rem;"/>
+            </span>
+        </div>
         <table>
             <thead>
                 <tr>
@@ -31,7 +36,9 @@ const char index_html[] PROGMEM = R"rawliteral(
                 <tr>
                     <td title="Total count of disintegrations">&sum;n:</td>
                     <td><span id="totalcount">0</span></td>
-                    <td></td>
+                    <td>
+                        <input type="button" value="Reset" id="totalcount_delete"/>
+                    </td>
                 </tr>
                 <tr>
                     <td title="Frequency of disintegrations">f:</td>

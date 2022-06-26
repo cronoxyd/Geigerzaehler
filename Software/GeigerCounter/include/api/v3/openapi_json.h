@@ -1,3 +1,9 @@
+#ifndef OPENAPI_JSON_H
+#define OPENAPI_JSON_H
+
+#include "Arduino.h"
+
+const char openapi_json[] PROGMEM = R"rawliteral(
 {
     "openapi": "3.0.2",
     "info": {
@@ -122,3 +128,6 @@
         }
     }
 }
+)rawliteral";
+
+#endif /* OPENAPI_JSON_H */

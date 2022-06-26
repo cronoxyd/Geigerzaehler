@@ -1,3 +1,9 @@
+#ifndef MAIN_CSS_H
+#define MAIN_CSS_H
+
+#include "Arduino.h"
+
+const char main_css[] PROGMEM = R"rawliteral(
 html,
 body {
     font-family: Arial, Helvetica, sans-serif;
@@ -161,3 +167,6 @@ tr:last-child td {
         padding: 1rem;
     }
 }
+)rawliteral";
+
+#endif /* MAIN_CSS_H */
