@@ -6,12 +6,8 @@ body {
 }
 
 body {
-    display: flex;
     width: 100vw;
     height: 100vh;
-    justify-content: center;
-    align-items: center;
-    flex-direction: column;
 }
 
 * {
@@ -53,6 +49,26 @@ td {
 
 tr:last-child td {
     border-bottom: 0;
+}
+
+.d-flex {
+    display: flex;
+}
+
+.flex-row {
+    flex-direction: row;
+}
+
+.flex-column {
+    flex-direction: column;
+}
+
+.justify-content-center {
+    justify-content: center;
+}
+
+.align-items-center {
+    align-items: center;
 }
 
 @media only screen and (max-width: 35rem) {
