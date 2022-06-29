@@ -46,9 +46,9 @@ const char index_html[] PROGMEM = R"rawliteral(
                     <td><span id="frequency_max">0</span> min<sup>-1</sup></td>
                 </tr>
                 <tr>
-                    <td title="Radiation dose">H:</td>
-                    <td><span id="dose">0</span> µSv/h</td>
-                    <td><span id="dose_max">0</span> µSv/h</td>
+                    <td title="Radiation dose rate">H<sub>T</sub>:</td>
+                    <td><span id="doserate">0 Sv/h</span></td>
+                    <td><span id="doserate_max">0 Sv/h</span></td>
                 </tr>
             </tbody>
         </table>

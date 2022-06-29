@@ -28,8 +28,10 @@ static unsigned long impulseCountInterval = 0;
 
 static unsigned int cpm;
 static unsigned int cpmMax;
-static double radiationDose = 0;    // µSv
-static double radiationDoseMax = 0; // µSv
+static double radiationDose = 0;    // Sv/h
+static double radiationDoseMax = 0; // Sv/h
+
+#define sign(x) (x == 0 ? 0 : (x > 0 ? 1 : -1))
 
 IPAddress laddr;
 String newHostname = "GeigerCounter";
@@ -44,9 +46,31 @@ ICACHE_RAM_ATTR void tube_impulse()
 String templateProcessor(const String &var)
 {
     if (var == "laddr")
-        return laddr.toString();
+        return WiFi.softAPIP().toString();
 
     return "";
+}
+
+String toSI(double d)
+{
+    char incPrefixes[] = { 'k', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y' };
+#warning "The µ character in the array is non-Unicode"
+    char decPrefixes[] = { 'm', 0b11100100, 'n', 'p', 'f', 'a', 'z', 'y' };
+
+    int degree = (int)floor(log10(abs(d)) / 3);
+    double scaled = d * pow(1000, -degree);
+
+    char prefix = 0;
+    switch (sign(degree))
+    {
+        case 1:  prefix = incPrefixes[degree - 1]; break;
+        case -1: prefix = decPrefixes[-degree - 1]; break;
+    }
+
+    if (prefix)
+        return String(scaled, 3) + ' ' + prefix;
+    else
+        return String(scaled, 3) + ' ';
 }
 
 void setup()
@@ -63,6 +87,8 @@ void setup()
     lcd.backlight();
     lcd.createChar(0, alarmBell);
     lcd.createChar(1, radioWaves);
+    lcd.createChar(2, subscriptT);
+    lcd.createChar(3, subscriptTMax);
     lcd.clear();
     lcd.print("Starting...");
 
@@ -79,7 +105,7 @@ void setup()
     dnsServer.start(53, "*", laddr);
 
     server.onNotFound([](AsyncWebServerRequest *request)
-                      { request->redirect("http://" + laddr.toString()); });
+                      { request->redirect("http://" + WiFi.softAPIP().toString()); });
 
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request)
               { request->send_P(200, "text/html", index_html); });
@@ -111,11 +137,11 @@ void setup()
     server.on("/api/frequency_max", HTTP_GET, [](AsyncWebServerRequest *request)
               { request->send_P(200, "text/plain", String(cpmMax).c_str()); });
 
-    server.on("/api/dose", HTTP_GET, [](AsyncWebServerRequest *request)
-              { request->send_P(200, "text/plain", String(radiationDose, 4).c_str()); });
+    server.on("/api/doserate", HTTP_GET, [](AsyncWebServerRequest *request)
+              { request->send_P(200, "text/plain", String(radiationDose, 20).c_str()); });
 
-    server.on("/api/dose_max", HTTP_GET, [](AsyncWebServerRequest *request)
-              { request->send_P(200, "text/plain", String(radiationDoseMax, 4).c_str()); });
+    server.on("/api/doserate_max", HTTP_GET, [](AsyncWebServerRequest *request)
+              { request->send_P(200, "text/plain", String(radiationDoseMax, 20).c_str()); });
 
     server.on("/api/uptime", HTTP_GET, [](AsyncWebServerRequest *request)
               { request->send_P(200, "text/plain", String(millis()).c_str()); });
@@ -147,7 +173,7 @@ void setup()
 
 double getRadiationDose(int CPM)
 {
-    return CPM * TUBE_COEFFICIENT;
+    return CPM * TUBE_COEFFICIENT_SV;
 }
 
 /*
@@ -196,7 +222,7 @@ void loop()
     if (now - updateTimer > 100 || updateTimer == 0)
     {
 
-        padLCDLine(lcdBuffer[0], sprintf(lcdBuffer[0], "%cn:   %lu ", 0b11110110, impulseCountTotal));
+        padLCDLine(lcdBuffer[0], sprintf(lcdBuffer[0], "%cn: %lu ", 0b11110110, impulseCountTotal));
 
         if (hasAlarm)
             lcdBuffer[0][19] = 0;
@@ -204,9 +230,11 @@ void loop()
         if (WiFi.softAPgetStationNum())
             lcdBuffer[0][18] = 1;
 
-        padLCDLine(lcdBuffer[1], sprintf(lcdBuffer[1], "f:    %u min%c ", cpm, 0b11101001));
-        padLCDLine(lcdBuffer[2], sprintf(lcdBuffer[2], "H:    %.4f %cSv/h ", radiationDose, 0b11100100));
-        padLCDLine(lcdBuffer[3], sprintf(lcdBuffer[3], "Hmax: %.4f %cSv/h ", radiationDoseMax, 0b11100100));
+        padLCDLine(lcdBuffer[1], sprintf(lcdBuffer[1], "f : %u min%c ", cpm, 0b11101001));
+        // padLCDLine(lcdBuffer[2], sprintf(lcdBuffer[2], "H%c: %.4f %cSv/h ", 2, radiationDose, 0b11100100));
+        // padLCDLine(lcdBuffer[3], sprintf(lcdBuffer[3], "H%c: %.4f %cSv/h ", 3, radiationDoseMax, 0b11100100));
+        padLCDLine(lcdBuffer[2], sprintf(lcdBuffer[2], "H%c: %sSv/h ", 2, toSI(radiationDose).c_str()));
+        padLCDLine(lcdBuffer[3], sprintf(lcdBuffer[3], "H%c: %sSv/h ", 3, toSI(radiationDoseMax).c_str()));
 
         updateLCD();
         updateTimer = now;

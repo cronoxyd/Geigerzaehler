@@ -45,15 +45,15 @@ const char api_html[] PROGMEM = R"rawliteral(
             <div class="api-item api-item-get">
                 <span class="api-method">GET</span>
                 <span class="api-description">
-                    <strong>/api/dose</strong>
-                    Returns the radiation dose in µSv/h.
+                    <strong>/api/doserate</strong>
+                    Returns the radiation dose rate in Sv/h.
                 </span>
             </div>
             <div class="api-item api-item-get">
                 <span class="api-method">GET</span>
                 <span class="api-description">
-                    <strong>/api/dose_max</strong>
-                    Returns the maximum measured radiation dose in µSv/h.
+                    <strong>/api/doserate_max</strong>
+                    Returns the maximum measured radiation dose rate in Sv/h.
                 </span>
             </div>
             <div class="api-item api-item-get">

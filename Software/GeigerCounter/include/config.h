@@ -7,7 +7,8 @@
 #define MEASUREMENT_INTERVAL_MS 15000
 #define CPM_COEFFICIENT 60000 / MEASUREMENT_INTERVAL_MS
 #define COUNTER_PIN D7
-#define TUBE_COEFFICIENT 0.00662251655629 // Conversion factor for M4011 Geiger-Müller tube
+#define TUBE_COEFFICIENT_USV 0.00662251655629 // Conversion factor for M4011 Geiger-Müller tube (cpm to µSv)
+#define TUBE_COEFFICIENT_SV (TUBE_COEFFICIENT_USV * 0.000001) // (cpm to Sv)
 
 // Email settings
 #define SMTP_SERVER "IHR_SMTP_SERVER"
