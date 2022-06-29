@@ -1,4 +1,4 @@
-#ifndef WIFI_OFF_BLACK_24DP_SVG_H
+﻿#ifndef WIFI_OFF_BLACK_24DP_SVG_H
 #define WIFI_OFF_BLACK_24DP_SVG_H
 
 #include "Arduino.h"

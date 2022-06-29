@@ -1,4 +1,4 @@
-#ifndef OPENAPI_JSON_H
+﻿#ifndef OPENAPI_JSON_H
 #define OPENAPI_JSON_H
 
 #include "Arduino.h"
